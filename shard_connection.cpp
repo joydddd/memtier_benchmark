@@ -130,7 +130,7 @@ shard_connection::shard_connection(unsigned int id, connections_manager* conns_m
                                    struct event_base* event_base, abstract_protocol* abs_protocol) :
         m_address(NULL), m_port(NULL), m_unix_sockaddr(NULL),
         m_bev(NULL), m_request_per_cur_interval(0), m_pending_resp(0), m_connection_state(conn_disconnected),
-        m_hello(setup_done), m_authentication(setup_done), m_db_selection(setup_done), m_cluster_slots(setup_done) {
+        m_loading(setup_done), m_hello(setup_done), m_authentication(setup_done), m_db_selection(setup_done), m_cluster_slots(setup_done) {
     m_id = id;
     m_conns_manager = conns_man;
     m_config = config;
@@ -257,6 +257,7 @@ int shard_connection::setup_socket(struct connect_info* addr) {
 
 int shard_connection::connect(struct connect_info* addr) {
     // set required setup commands
+    m_loading = m_config->wait_for_server_load ? setup_none : setup_done;
     m_authentication = m_config->authenticate ? setup_none : setup_done;
     m_db_selection = m_config->select_db ? setup_none : setup_done;
     m_hello = (m_config->protocol == PROTOCOL_RESP2 || m_config->protocol == PROTOCOL_RESP3) ? setup_none : setup_done;
@@ -306,6 +307,7 @@ void shard_connection::disconnect() {
     m_db_selection = setup_done;
     m_cluster_slots = setup_done;
     m_hello = setup_done;
+    m_loading = setup_done;
 }
 
 void shard_connection::set_address_port(const char* address, const char* port) {
@@ -357,7 +359,8 @@ bool shard_connection::is_conn_setup_done() {
     return m_authentication == setup_done &&
            m_db_selection == setup_done &&
            m_cluster_slots == setup_done &&
-           m_hello == setup_done;
+           m_hello == setup_done &&
+           m_loading == setup_done;
 }
 
 void shard_connection::send_conn_setup_commands(struct timeval timestamp) {
@@ -380,6 +383,21 @@ void shard_connection::send_conn_setup_commands(struct timeval timestamp) {
         m_protocol->configure_protocol(m_config->protocol);
         push_req(new request(rt_hello, 0, &timestamp, 0));
         m_hello = setup_sent;
+    }
+
+    if (m_loading == setup_none) {
+        int cmd_size;
+        const char* key = "hello_key";
+        int key_len = strlen(key);
+        const char* value = "hello_value";
+        int value_len = strlen(value);
+        unsigned int offset = m_config->data_offset;
+        unsigned int expiry = 0;
+        benchmark_debug_log("server %s: SET key=[%.*s] value_len=%u expiry=%u\n",
+                        get_readable_id(), key_len, key, value_len, expiry);
+        cmd_size = m_protocol->write_command_set(key, key_len, value, value_len, expiry, offset);
+        push_req(new request(rt_loading, cmd_size, &timestamp, 0));
+        m_loading = setup_sent;
     }
 
     if (m_cluster_slots == setup_none) {
@@ -446,6 +464,15 @@ void shard_connection::process_response(void)
             } else {
                 m_hello = setup_done;
                 benchmark_debug_log("HELLO successful.\n");
+            }
+            break;
+        case rt_loading:
+            if (r->is_error()) {
+                benchmark_debug_log("error: waiting for server [%s]\n", r->get_status());
+                m_loading = setup_none;
+            } else {
+                m_loading = setup_done;
+                benchmark_error_log("server finished loading.\n");
             }
             break;
         default:

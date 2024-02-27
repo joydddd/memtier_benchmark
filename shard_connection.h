@@ -39,7 +39,7 @@ class object_generator;
 enum connection_state { conn_disconnected, conn_in_progress, conn_connected };
 enum setup_state {setup_none, setup_sent, setup_done};
 
-enum request_type { rt_unknown, rt_set, rt_get, rt_wait, rt_arbitrary, rt_auth, rt_select_db, rt_cluster_slots, rt_hello };
+enum request_type { rt_unknown, rt_set, rt_get, rt_wait, rt_arbitrary, rt_auth, rt_select_db, rt_cluster_slots, rt_hello, rt_loading };
 struct request {
     request_type m_type;
     struct timeval m_sent_time;
@@ -172,6 +172,7 @@ private:
 
     enum connection_state m_connection_state;
 
+    enum setup_state m_loading;
     enum setup_state m_hello;
     enum setup_state m_authentication;
     enum setup_state m_db_selection;

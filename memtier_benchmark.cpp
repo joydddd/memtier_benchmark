@@ -110,6 +110,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
     char tmpbuf[512];
 
     fprintf(file,
+        "wait_for_server_load = %s\n"
         "server = %s\n"
         "port = %u\n"
         "unix socket = %s\n"
@@ -160,6 +161,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "num-slaves = %u-%u\n"
         "wait-timeout = %u-%u\n"
         "json-out-file = %s\n",
+        cfg->wait_for_server_load ? "yes" : "no",
         cfg->server,
         cfg->port,
         cfg->unix_socket,
@@ -217,7 +219,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
     char tmpbuf[512];
 
     jsonhandler->open_nesting("configuration");
-
+    jsonhandler->write_obj("wait_for_server_load","\"%s\"",     cfg->wait_for_server_load ? "true" : "false");
     jsonhandler->write_obj("server"            ,"\"%s\"",      	cfg->server);
     jsonhandler->write_obj("port"              ,"%u",          	cfg->port);
     jsonhandler->write_obj("unix socket"       ,"\"%s\"",      	cfg->unix_socket);
@@ -428,10 +430,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_tls_protocols,
         o_hdr_file_prefix,
         o_rate_limiting,
-        o_help
+        o_help,
+        o_wait_for_server_load
     };
 
     static struct option long_options[] = {
+        { "wait-for-server-load",       0, 0, o_wait_for_server_load},
         { "server",                     1, 0, 's' },
         { "host",                       1, 0, 'h' },
         { "port",                       1, 0, 'p' },
@@ -509,6 +513,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         switch (c) {
                 case o_help:
                     return -1;
+                    break;
+                case o_wait_for_server_load:
+                    cfg->wait_for_server_load = true;
                     break;
                 case 'v':
                     puts(PACKAGE_STRING);
@@ -944,6 +951,7 @@ void usage() {
     fprintf(stdout, "Usage: memtier_benchmark [options]\n"
             "A memcache/redis NoSQL traffic generator and performance benchmarking tool.\n"
             "\n"
+            "(Joy added ) --wait-for-server-load     Wait for the server to finish loading data before starting the test\n"
             "Connection and General Options:\n"
             "  -h, --host=ADDR                Server address (default: localhost)\n"
             "  -s, --server=ADDR              Same as --host\n"

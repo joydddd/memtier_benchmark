@@ -107,6 +107,8 @@ struct benchmark_config {
     unsigned int request_rate;
     unsigned int request_per_interval;
     unsigned int request_interval_microsecond;
+    // Wait for server to finish loading
+    bool wait_for_server_load;
 #ifdef USE_TLS
     bool tls;
     const char *tls_cert;
