@@ -111,6 +111,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
 
     fprintf(file,
         "wait_for_server_load = %s\n"
+        "shutdown_server = %s\n"
         "server = %s\n"
         "port = %u\n"
         "unix socket = %s\n"
@@ -162,6 +163,7 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
         "wait-timeout = %u-%u\n"
         "json-out-file = %s\n",
         cfg->wait_for_server_load ? "yes" : "no",
+        cfg->shutdown_server ? "yes" : "no",
         cfg->server,
         cfg->port,
         cfg->unix_socket,
@@ -220,6 +222,7 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
 
     jsonhandler->open_nesting("configuration");
     jsonhandler->write_obj("wait_for_server_load","\"%s\"",     cfg->wait_for_server_load ? "true" : "false");
+    jsonhandler->write_obj("shutdown_server"    ,"\"%s\"",       cfg->shutdown_server ? "true" : "false");
     jsonhandler->write_obj("server"            ,"\"%s\"",      	cfg->server);
     jsonhandler->write_obj("port"              ,"%u",          	cfg->port);
     jsonhandler->write_obj("unix socket"       ,"\"%s\"",      	cfg->unix_socket);
@@ -431,11 +434,13 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
         o_hdr_file_prefix,
         o_rate_limiting,
         o_help,
-        o_wait_for_server_load
+        o_wait_for_server_load, 
+        o_shutdown_server
     };
 
     static struct option long_options[] = {
         { "wait-for-server-load",       0, 0, o_wait_for_server_load},
+        { "shutdown-server",            0, 0, o_shutdown_server},
         { "server",                     1, 0, 's' },
         { "host",                       1, 0, 'h' },
         { "port",                       1, 0, 'p' },
@@ -516,6 +521,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
                     break;
                 case o_wait_for_server_load:
                     cfg->wait_for_server_load = true;
+                    break;
+                case o_shutdown_server:
+                    cfg->shutdown_server = true;
                     break;
                 case 'v':
                     puts(PACKAGE_STRING);
@@ -1630,6 +1638,11 @@ int main(int argc, char *argv[])
                 sleep(1);   // let connections settle
 
             run_stats stats = run_benchmark(run_id, &cfg, obj_gen);
+            if (cfg.shutdown_server){
+                fprintf(outfile, "Shutting down server\n");
+                system("echo \"shutdown graceful\" | nc -q0 localhost 11211");  
+            }
+
             all_stats.push_back(stats);
             stats.save_hdr_full_run( &cfg,run_id );
             stats.save_hdr_get_command( &cfg,run_id );
